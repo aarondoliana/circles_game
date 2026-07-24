@@ -49,7 +49,17 @@ class Archive:
 
     def sorted_by_complexity(self) -> list:
         """Easiest first: most given cells, then fewest solver guesses
-        needed. A puzzle's index in this list is its "sorted ID."""
+        needed. A puzzle's index in this list is its "sorted ID."
+
+        TODO(difficulty-calibration): given_cells is currently the primary
+        key and solve_guesses only a tiebreaker -- an untested guess at how
+        the two relate to *felt* difficulty. Once we have human playtest
+        results, revisit this weighting (e.g. promote solve_guesses to a
+        primary factor, or combine both into a real formula). Both raw
+        signals are already stored on Puzzle and this method is computed
+        live from them, so re-weighting is just a change here -- no
+        regeneration or migration needed, even for already-saved archives.
+        """
         return sorted(self.puzzles.values(), key=lambda p: (-p.given_cells, p.solve_guesses))
 
     def rank_of(self, puzzle_id: str) -> int | None:
