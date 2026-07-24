@@ -214,18 +214,20 @@ When neither of these two processes result in progress, the Solver would need to
 
 Summarizing, this approach results in the following algorithm:
 
-1. Start:
-    1. Find all R3-solvable configurations and put them on the R3-Solver Stack
-    2. Find all R2-solvable configurations and put them on the R2-Solver Stack
-2. While either Stack is not empty:
-    1. Pop the R3 and R2 Stacks alternatingly, one Stack and configuration at a time, and implement the configuration’s solution.
-    2. With each cell-filling, listen for R3- and R2-solvable configurations, and put them all on their respective Stack.
-3. While the Stacks are empty:
-    1. Save the current State for Backtracking.
-    2. Fill a cell at random with a random circle type, and mark the cell as attempted in the Backtrack Safe-point.
-    3. Validate. If the State is valid, pass, else backtrack to the last Safe-point [and go to 3.]. If all empty cells in the last Safe-point are attempted, backtrack further to the previous Safe-point [and go to 3.]. If there is no further Safe-point, raise a critical bug.
-    4. Listen for R3- and R2-solvable configurations, and put them all on their respective Stack.
-
+1. While the grid contains R3-solvable configurations, solve them one by one. [The while loop stops when the candidate configuration space, for R3 all rows and columns, is exhausted.]
+2. Search the grid for an R2-solvable configuration, and solve them one by one. [The while loop stops when the candidate configuration space, for R2 all triplets within each row and each column, is exhausted.]
+3. Go back to (1). If steps (1) and (2) completed in sequence without filling a cell, mark this stage of the puzzle as an exception for qualitative review. [A player should be able to solve the puzzle by reasoning solely based on R2 and R3.]
+4. Validate. [might be unnecessary]
+5. Check if puzzle if complete. If yes, exit.
+6. Save the current State to the Backtracking stack.
+7. Fill a cell at random with a random circle type.
+8. Validate. 
+    1. If the State is valid, go to (1).
+    2. If the State is not valid, change the value entered and validate again.
+        1. If the State is valid, go to (1).
+        2. If the State is not valid, save this cell as depleted for this State. 
+            1. If there are still empty cells not marked as depleted in the last State added to the Backtracking stack, backtrack to that State and go to (7).
+            2. If all empty cells in the last State added to the Backtracking stack are marked as depleted, move to the State prior to the last one considered if one exists and go to (7), else raise a critical error.
 
 
 ### <do not implement for now>
