@@ -2,20 +2,27 @@
 a chosen subset of cells, per the design doc's "backward approach" ("mask
 cells until only a few cells are remaining").
 
-This module currently holds the sampling/measurement primitives needed to
-study *which* subsets of kept cells tend to yield a unique solution --
-number of kept cells, how spread out they are, and what fraction are FULL --
-before committing to a specific masking heuristic. `solver.has_unique_solution`
-(or `solver.solve` with a small limit) is what actually checks a candidate
-starting grid.
+`generate_puzzle` is the entry point: sample-and-reject to find *any*
+unique-solution mask, then greedily remove further cells while uniqueness
+holds, to get near the fewest starting cells that particular draw can reach
+(the design doc's stated difficulty signal -- "how many more cells could
+have been masked while still yielding a starting point with a unique
+solution"). The sampling defaults (spread="spread", full_fraction=0.75,
+starting from n=30) come directly from the Monte Carlo sweep run against
+the Solver: farthest-point-spread cells with a slight skew toward FULL hit
+~90%+ uniqueness at n=30, versus ~0% below n~14 regardless of arrangement --
+so it's cheap to resample at the high end and let minimization do the work
+of finding how far a given solved grid can actually be pushed.
 """
 
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 
 from constants import SIZE, Value
 from grid import Grid
+from solver import has_unique_solution
 
 
 def mask_grid(solved: Grid, keep_positions) -> Grid:
@@ -95,3 +102,60 @@ def _farthest_point_sample(rng: random.Random, candidates, k) -> list:
                 best_index, best_distance = i, distance
         chosen.append(pool.pop(best_index))
     return chosen
+
+
+@dataclass
+class MaskingStats:
+    sample_attempts: int = 0  # resample-until-unique attempts before minimization
+    starting_cells: int = 0  # kept-cell count of the first unique mask found
+    final_cells: int = 0  # kept-cell count after minimization
+
+
+def find_unique_starting_positions(solved: Grid, rng: random.Random, n: int,
+                                    full_fraction: float = 0.75, spread: str = "spread",
+                                    max_attempts: int = 200):
+    """Repeatedly samples `n` positions until the resulting mask has a unique
+    solution, or gives up after `max_attempts` (returns None -- the caller
+    should retry with a larger `n`, per the sweep's floor around n~14)."""
+    for attempt in range(1, max_attempts + 1):
+        positions = sample_positions(solved, rng, n=n, full_fraction=full_fraction, spread=spread)
+        if has_unique_solution(mask_grid(solved, positions)):
+            return positions, attempt
+    return None, max_attempts
+
+
+def minimize_positions(solved: Grid, positions, rng: random.Random) -> list:
+    """Greedily drops cells from `positions`, one at a time in random order,
+    keeping each drop only if the mask still has a unique solution. A single
+    pass, so the result is locally minimal for this removal order, not
+    necessarily globally minimal (finding the true minimum is NP-hard in
+    general) -- this is the standard technique Sudoku-style generators use."""
+    order = list(positions)
+    rng.shuffle(order)
+    kept = list(positions)
+    for pos in order:
+        candidate = [p for p in kept if p != pos]
+        if has_unique_solution(mask_grid(solved, candidate)):
+            kept = candidate
+    return kept
+
+
+def generate_puzzle(solved: Grid, rng: random.Random | None = None, target_n: int = 30,
+                     full_fraction: float = 0.75, spread: str = "spread",
+                     max_attempts: int = 200, minimize: bool = True):
+    """Masks `solved` down to a starting puzzle with a unique solution.
+    Returns (starting_grid, kept_positions, MaskingStats), or (None, None,
+    stats) if no unique mask was found at `target_n` within `max_attempts`."""
+    rng = rng or random.Random()
+    stats = MaskingStats()
+    positions, attempts = find_unique_starting_positions(
+        solved, rng, target_n, full_fraction=full_fraction, spread=spread, max_attempts=max_attempts)
+    stats.sample_attempts = attempts
+    if positions is None:
+        return None, None, stats
+    stats.starting_cells = len(positions)
+
+    if minimize:
+        positions = minimize_positions(solved, positions, rng)
+    stats.final_cells = len(positions)
+    return mask_grid(solved, positions), positions, stats

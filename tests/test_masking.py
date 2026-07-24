@@ -2,7 +2,15 @@ import random
 
 from constants import SIZE, Value
 from generator import LocalExpansionGenerator
-from masking import avg_pairwise_distance, full_fraction_of, mask_grid, sample_positions
+from masking import (
+    avg_pairwise_distance,
+    full_fraction_of,
+    generate_puzzle,
+    mask_grid,
+    minimize_positions,
+    sample_positions,
+)
+from solver import has_unique_solution, solve
 
 BLANK = Value.BLANK
 
@@ -65,3 +73,45 @@ def test_spread_mode_yields_more_spread_than_clustered_on_average():
     avg_spread = sum(spread_distances) / len(spread_distances)
     avg_clustered = sum(clustered_distances) / len(clustered_distances)
     assert avg_spread > avg_clustered
+
+
+def test_generate_puzzle_returns_a_unique_solution_starting_grid():
+    solved = _solved()
+    starting, positions, stats = generate_puzzle(solved, rng=random.Random(5))
+
+    assert starting is not None
+    assert has_unique_solution(starting)
+    assert len(positions) == stats.final_cells
+    solutions, _ = solve(starting, limit=1)
+    assert (solutions[0].cells == solved.cells).all()
+
+
+def test_generate_puzzle_minimization_does_not_increase_cell_count():
+    solved = _solved()
+    starting, positions, stats = generate_puzzle(solved, rng=random.Random(6), target_n=30)
+    assert stats.final_cells <= stats.starting_cells
+    assert len(positions) == stats.final_cells
+
+
+def test_minimize_positions_keeps_a_unique_solution_and_cannot_drop_further():
+    solved = _solved()
+    rng = random.Random(8)
+    positions = sample_positions(solved, rng, n=30, full_fraction=0.75, spread="spread")
+    assert has_unique_solution(mask_grid(solved, positions))
+
+    minimized = minimize_positions(solved, positions, rng)
+    assert has_unique_solution(mask_grid(solved, minimized))
+    assert len(minimized) <= len(positions)
+
+    # No single cell can be removed from the minimized set without losing uniqueness.
+    for pos in minimized:
+        candidate = [p for p in minimized if p != pos]
+        assert not has_unique_solution(mask_grid(solved, candidate))
+
+
+def test_generate_puzzle_returns_none_when_target_n_is_hopelessly_small():
+    solved = _solved()
+    starting, positions, stats = generate_puzzle(solved, rng=random.Random(9), target_n=2, max_attempts=5)
+    assert starting is None
+    assert positions is None
+    assert stats.sample_attempts == 5
