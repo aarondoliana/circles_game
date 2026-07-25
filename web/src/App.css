@@ -1,0 +1,105 @@
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  text-align: center;
+}
+
+.status {
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.status--error {
+  color: #b00020;
+}
+
+.status--solved {
+  color: #1b8a3a;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  background: #333;
+  border: 3px solid #333;
+  border-radius: 6px;
+  aspect-ratio: 1;
+  margin: 0 auto 20px;
+  max-width: 420px;
+}
+
+.cell {
+  aspect-ratio: 1;
+  background: #fff;
+  border: none;
+  font-size: clamp(16px, 4vw, 26px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #222;
+  transition: background-color 0.1s ease;
+}
+
+.cell:hover:not(:disabled) {
+  background: #eef3ff;
+}
+
+.cell--given {
+  background: #e9e9e9;
+  font-weight: 700;
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+.cell--incorrect {
+  background: #ffd8a8;
+}
+
+.cell--rule-violation {
+  box-shadow: inset 0 0 0 3px #d0342c;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.controls__row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+}
+
+.controls__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.controls button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+}
+
+.controls button:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
