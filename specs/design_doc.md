@@ -229,6 +229,12 @@ Summarizing, this approach results in the following algorithm:
             1. If there are still empty cells not marked as depleted in the last State added to the Backtracking stack, backtrack to that State and go to (7).
             2. If all empty cells in the last State added to the Backtracking stack are marked as depleted, move to the State prior to the last one considered if one exists and go to (7), else raise a critical error.
 
+**Additional solver patterns to add between (1) and (2)**
+
+1. When a line has two circles of the same kind with three blanks in between, the middle cell must be of the opposite type: A sequence of ⚫ _ ⚫ _ ⚫, or O _ O _ O would either result in a sequence of five of a kind violating R2, or a triplet violating R3. ⚫ _ _ _ ⚫ must therefore lead to ⚫ _ O _ ⚫, and O _ _ _ O must lead to O _ ⚫ _ O.
+2. 
+
+
 
 ### <do not implement for now>
 

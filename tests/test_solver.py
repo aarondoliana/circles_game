@@ -3,7 +3,7 @@ import random
 from constants import SIZE, Value
 from generator import LocalExpansionGenerator
 from grid import Grid
-from solver import find_r2_forced_moves, find_r3_forced_moves, has_unique_solution, propagate, solve
+from solver import find_gap_forced_moves, find_r2_forced_moves, find_r3_forced_moves, has_unique_solution, propagate, solve
 from validator import validate
 
 FULL, EMPTY, BLANK = Value.FULL, Value.EMPTY, Value.BLANK
@@ -47,6 +47,45 @@ def test_r3_forces_blank_between_two_same_known_neighbors():
     # row 0 triplet (0,1,2) = EMPTY, _, FULL: since ends differ, no r3 force from this triplet alone;
     # but triplet (1,2,3) = _, FULL, EMPTY forces position 1 (end-blank) to match its neighbor FULL
     assert moves.get((0, 1)) == FULL
+
+
+def test_gap_pattern_forces_middle_cell_between_matching_full_circles():
+    # F _ _ _ F: the middle blank must be EMPTY, else the flanking R3
+    # triplets would force both inner blanks to FULL too, five-in-a-row.
+    values = [[BLANK] * SIZE for _ in range(SIZE)]
+    values[0][0] = FULL
+    values[0][4] = FULL
+    grid = Grid.from_values(values)
+    moves = {(r, c): v for r, c, v in find_gap_forced_moves(grid)}
+    assert moves.get((0, 2)) == EMPTY
+
+
+def test_gap_pattern_forces_middle_cell_between_matching_empty_circles():
+    # Same pattern, along a column, with EMPTY flanks -> middle forced FULL.
+    values = [[BLANK] * SIZE for _ in range(SIZE)]
+    values[3][3] = EMPTY
+    values[7][3] = EMPTY
+    grid = Grid.from_values(values)
+    moves = {(r, c): v for r, c, v in find_gap_forced_moves(grid)}
+    assert moves.get((5, 3)) == FULL
+
+
+def test_gap_pattern_does_not_fire_without_exactly_three_blanks_between():
+    values = [[BLANK] * SIZE for _ in range(SIZE)]
+    values[0][0] = FULL
+    values[0][3] = FULL  # only two cells apart, not four
+    grid = Grid.from_values(values)
+    moves = {(r, c): v for r, c, v in find_gap_forced_moves(grid)}
+    assert moves == {}
+
+
+def test_propagate_applies_gap_pattern_without_guessing():
+    values = [[BLANK] * SIZE for _ in range(SIZE)]
+    values[0][0] = FULL
+    values[0][4] = FULL
+    grid = Grid.from_values(values)
+    assert propagate(grid)
+    assert grid.get(0, 2) == EMPTY
 
 
 def test_propagate_solves_pure_logic_grid_without_guessing():

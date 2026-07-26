@@ -16,6 +16,16 @@ remaining blanks are forced to the other value.
 R3: for any three consecutive cells with exactly one blank, if only one of
 the two candidate values keeps the triplet from becoming an alternating
 ⚫O⚫/O⚫O, that value is forced.
+Gap: two same-kind circles with exactly three blanks between them
+(X _ _ _ X) force the middle blank to the opposite kind -- otherwise the two
+flanking R3 triplets would each force their inner blank to match X too
+(else they'd immediately alternate), producing five-in-a-row and violating
+R2. This is the design doc's "additional solver pattern": genuinely a pure
+R2+R3 consequence, not a guess, but invisible to the per-triplet R3 check
+above since none of the three sub-triplets in this window ever has exactly
+one blank. Included specifically so SolveStats.guesses doesn't overcount
+puzzles that a human could solve by pure logic (see the difficulty-weighting
+TODO in archive.py) -- not for raw speed, since solves are already fast.
 
 One deliberate deviation from the doc's backtracking description: when both
 values of a guessed cell dead-end, the doc has you try a *different* cell at
@@ -94,6 +104,28 @@ def _r3_line_moves(line, make_move) -> list:
     return moves
 
 
+def find_gap_forced_moves(grid: Grid) -> list:
+    moves = []
+    for r in range(SIZE):
+        moves.extend(_gap_line_moves(grid.row(r), lambda i, v, r=r: (r, i, v)))
+    for c in range(SIZE):
+        moves.extend(_gap_line_moves(grid.col(c), lambda i, v, c=c: (i, c, v)))
+    return moves
+
+
+def _gap_line_moves(line, make_move) -> list:
+    moves = []
+    for i in range(SIZE - 4):
+        a, b1, b2, b3, e = (Value(v) for v in line[i:i + 5])
+        if a == Value.BLANK or a != e:
+            continue
+        if b1 != Value.BLANK or b2 != Value.BLANK or b3 != Value.BLANK:
+            continue
+        opposite = Value.EMPTY if a == Value.FULL else Value.FULL
+        moves.append(make_move(i + 2, opposite))
+    return moves
+
+
 def _drain(find_moves, grid: Grid) -> bool:
     """Applies `find_moves(grid)` repeatedly until it finds nothing new.
     Returns whether any cell was filled."""
@@ -109,17 +141,21 @@ def _drain(find_moves, grid: Grid) -> bool:
 
 
 def propagate(grid: Grid) -> bool:
-    """Drains R3 then R2 to a fixpoint, looping back to R3 as long as either
-    made progress. Returns False if a contradiction is detected (grid can no
-    longer reach a valid solution), True otherwise (grid may be incomplete)."""
+    """Drains R3, then the gap pattern, then R2 to a fixpoint, looping back
+    to R3 as long as any of the three made progress. Returns False if a
+    contradiction is detected (grid can no longer reach a valid solution),
+    True otherwise (grid may be incomplete)."""
     while True:
         r3_progress = _drain(find_r3_forced_moves, grid)
+        if not validate(grid).is_valid:
+            return False
+        gap_progress = _drain(find_gap_forced_moves, grid)
         if not validate(grid).is_valid:
             return False
         r2_progress = _drain(find_r2_forced_moves, grid)
         if not validate(grid).is_valid:
             return False
-        if not (r3_progress or r2_progress):
+        if not (r3_progress or gap_progress or r2_progress):
             return True
 
 
