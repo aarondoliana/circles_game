@@ -104,3 +104,23 @@
   opacity: 0.4;
   cursor: default;
 }
+
+.player-stats {
+  margin-top: 24px;
+  color: #888;
+  font-size: 0.9em;
+}
+
+.player-stats__reset {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #888;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.player-stats__reset:hover {
+  color: #444;
+}
