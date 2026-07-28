@@ -5,8 +5,10 @@ import {
   isSolved,
   loadPlayerArchive,
   recordSolved,
+  recordSolveTime,
   savePlayerArchive,
   statsFor,
+  timeStatsFor,
   unsolvedPuzzles,
   type PlayerArchiveState,
   type StorageLike,
@@ -63,6 +65,17 @@ describe("loadPlayerArchive / savePlayerArchive", () => {
     const state = loadPlayerArchive(storage);
     expect(state.solved).toEqual({});
   });
+
+  it("backfills a missing times array from before solve-time tracking existed", () => {
+    const storage = fakeStorage();
+    storage.setItem(
+      "circles-game:player-v1",
+      JSON.stringify({ playerId: "p1", solved: { p1: { difficulty: "Easy", solvedAt: 1 } } }),
+    );
+    const state = loadPlayerArchive(storage);
+    expect(state.times).toEqual([]);
+    expect(state.solved.p1.difficulty).toBe("Easy");
+  });
 });
 
 describe("recordSolved / isSolved", () => {
@@ -108,5 +121,59 @@ describe("unsolvedPuzzles", () => {
     for (const p of pool) state = recordSolved(state, p.id, p.difficulty);
     const remaining = unsolvedPuzzles(state, pool);
     expect(remaining).toEqual(pool);
+  });
+});
+
+describe("recordSolveTime / timeStatsFor", () => {
+  it("accumulates every sample, including repeats of the same puzzle", () => {
+    let state = createPlayerArchive();
+    state = recordSolveTime(state, "Easy", 1000);
+    state = recordSolveTime(state, "Easy", 2000);
+    expect(state.times).toHaveLength(2);
+  });
+
+  it("returns null for a difficulty with no samples", () => {
+    const stats = timeStatsFor(createPlayerArchive());
+    expect(stats.Easy).toBeNull();
+  });
+
+  it("computes count/best/average per difficulty", () => {
+    let state = createPlayerArchive();
+    state = recordSolveTime(state, "Easy", 3000);
+    state = recordSolveTime(state, "Easy", 1000);
+    state = recordSolveTime(state, "Easy", 2000);
+
+    const stats = timeStatsFor(state);
+    expect(stats.Easy).toEqual({ count: 3, bestMs: 1000, averageMs: 2000, bestAverageMs: 2000 });
+  });
+
+  it("the inter-quartile mean resists an outlier that skews the plain average", () => {
+    let state = createPlayerArchive();
+    for (const seconds of [1, 2, 3, 4, 5, 6, 7, 100]) {
+      state = recordSolveTime(state, "Hard", seconds * 1000);
+    }
+    const stats = timeStatsFor(state);
+    expect(stats.Hard).toEqual({ count: 8, bestMs: 1000, averageMs: 16000, bestAverageMs: 4500 });
+  });
+
+  it("equals the plain average when there are too few samples to trim (n < 4)", () => {
+    let state = createPlayerArchive();
+    state = recordSolveTime(state, "Medium", 1000);
+    state = recordSolveTime(state, "Medium", 3000);
+
+    const stats = timeStatsFor(state);
+    expect(stats.Medium!.bestAverageMs).toBe(stats.Medium!.averageMs);
+  });
+
+  it("keeps stats independent per difficulty", () => {
+    let state = createPlayerArchive();
+    state = recordSolveTime(state, "Easy", 1000);
+    state = recordSolveTime(state, "Hard", 5000);
+
+    const stats = timeStatsFor(state);
+    expect(stats.Easy!.count).toBe(1);
+    expect(stats.Hard!.count).toBe(1);
+    expect(stats.Medium).toBeNull();
+    expect(stats["Extra Hard"]).toBeNull();
   });
 });

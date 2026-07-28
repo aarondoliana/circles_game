@@ -13,15 +13,35 @@ export interface SolvedRecord {
   solvedAt: number; // epoch ms of the *first* solve
 }
 
+/** One qualifying completed attempt. Unlike SolvedRecord, every qualifying
+ * completion appends a new sample (including repeats of the same puzzle) so
+ * time stats improve with play. Callers exclude disqualified attempts
+ * (Show Solution used, and eventually "free hints mode") before recording. */
+export interface SolveTimeRecord {
+  difficulty: Difficulty;
+  durationMs: number;
+  solvedAt: number;
+}
+
 export interface PlayerArchiveState {
   playerId: string;
   solved: Record<string, SolvedRecord>; // puzzleId -> record
+  times: SolveTimeRecord[];
 }
 
 export type PlayerStats = {
   total: number;
   byDifficulty: Record<Difficulty, number>;
 };
+
+export interface DifficultyTimeStats {
+  count: number;
+  bestMs: number;
+  averageMs: number;
+  bestAverageMs: number; // inter-quartile mean
+}
+
+export type TimeStats = Record<Difficulty, DifficultyTimeStats | null>;
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -34,7 +54,7 @@ function generatePlayerId(): string {
 }
 
 export function createPlayerArchive(): PlayerArchiveState {
-  return { playerId: generatePlayerId(), solved: {} };
+  return { playerId: generatePlayerId(), solved: {}, times: [] };
 }
 
 export function loadPlayerArchive(storage: StorageLike = window.localStorage): PlayerArchiveState {
@@ -45,7 +65,8 @@ export function loadPlayerArchive(storage: StorageLike = window.localStorage): P
     if (!parsed || typeof parsed.playerId !== "string" || typeof parsed.solved !== "object") {
       return createPlayerArchive();
     }
-    return parsed as PlayerArchiveState;
+    // `times` backfilled for archives saved before solve-time tracking existed.
+    return { times: [], ...parsed } as PlayerArchiveState;
   } catch {
     return createPlayerArchive();
   }
@@ -82,4 +103,43 @@ export function statsFor(state: PlayerArchiveState): PlayerStats {
 export function unsolvedPuzzles(state: PlayerArchiveState, puzzles: ArchivedPuzzle[]): ArchivedPuzzle[] {
   const remaining = puzzles.filter((p) => !isSolved(state, p.id));
   return remaining.length > 0 ? remaining : puzzles;
+}
+
+/** Records one qualifying solve-time sample. The caller decides whether this
+ * attempt qualifies (e.g. Show Solution wasn't used). */
+export function recordSolveTime(state: PlayerArchiveState, difficulty: Difficulty, durationMs: number): PlayerArchiveState {
+  return {
+    ...state,
+    times: [...state.times, { difficulty, durationMs, solvedAt: Date.now() }],
+  };
+}
+
+function average(values: number[]): number {
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+/** Mean of the middle 50% of values (trimmed by count, not exact quartile
+ * interpolation) -- a "typical" time that isn't skewed by one lucky or one
+ * fumbled attempt. */
+function interQuartileMean(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const trim = Math.floor(sorted.length / 4);
+  return average(sorted.slice(trim, sorted.length - trim));
+}
+
+export function timeStatsFor(state: PlayerArchiveState): TimeStats {
+  const result = {} as TimeStats;
+  for (const difficulty of DIFFICULTIES) {
+    const durations = state.times.filter((t) => t.difficulty === difficulty).map((t) => t.durationMs);
+    result[difficulty] =
+      durations.length === 0
+        ? null
+        : {
+            count: durations.length,
+            bestMs: Math.min(...durations),
+            averageMs: average(durations),
+            bestAverageMs: interQuartileMean(durations),
+          };
+  }
+  return result;
 }

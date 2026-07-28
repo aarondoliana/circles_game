@@ -231,18 +231,63 @@ Summarizing, this approach results in the following algorithm:
 
 **Additional solver patterns to add between (1) and (2)**
 
-1. When a line has two circles of the same kind with three blanks in between, the middle cell must be of the opposite type: A sequence of ⚫ _ ⚫ _ ⚫, or O _ O _ O would either result in a sequence of five of a kind violating R2, or a triplet violating R3. ⚫ _ _ _ ⚫ must therefore lead to ⚫ _ O _ ⚫, and O _ _ _ O must lead to O _ ⚫ _ O.
-2. 
+1. *Group-of-three configuration:* When a line has three circles of the same kind, the remaining fourth circle of that kind can only be: adjacent to the three (before or after), or in a line-edge as long as there are two or more cells between the edge and the closest cell of the group of three (else it would lead to an R3 violation); all other cells can be filled with the opposite circle type. Examples: _ _ ⚫ ⚫ ⚫ _ O _ cannot be improved using this pattern, but _ ⚫ ⚫ ⚫ _ _ _ _ can be solved to _ ⚫ ⚫ ⚫ _ O O _ , and ⚫ ⚫ ⚫ _ _ _ _ _ can be solved to ⚫ ⚫ ⚫ _ O O O _ .
+2. *Quintuplet configuration:* When a line has two circles of the same kind with three blanks in between, the middle cell must be of the opposite type: A sequence of ⚫ _ ⚫ _ ⚫, or O _ O _ O would either result in a sequence of five of a kind violating R2, or a triplet violating R3. ⚫ _ _ _ ⚫ must therefore lead to ⚫ _ O _ ⚫, and O _ _ _ O must lead to O _ ⚫ _ O.
+3. *Adjacency inference, no edge:* When a line has two circles of the same type occupying non-edge positions at some distance apart, the remaining two circles of the same type can only occur in: the positions adjacent to the two circles, or the two line edges. The remaining cells must be of the opposite type. Examples: _ ⚫ _ _ _ _ ⚫ _ can be solved to _ ⚫ _ O O _ ⚫ _ , and _ ⚫ _ _ ⚫ _ _ _ can be solved to _ ⚫ _ _ ⚫ _ O _ .
+4. *Adjacency inference, one edge:* When a line has two circles of the same type at some distance apart with only one of them occupying an edge positions, the remaining two circles of the same type can only occur in: the position adjacent to the circle on the edge, the other edge position, or the two cells on either side of the other circle. The remaining cells must be of the opposite type. Examples: ⚫ _ _ ⚫ _ _ _ _ can be solved to ⚫ _ _ ⚫ _ _ O _ , ⚫ _ _ _ _ ⚫ _ _ can be solved to ⚫ _ O _ _ ⚫ _ _ ; in contrast, ⚫ _ _ _ ⚫ _ _ _ cannot be solved further. This amounts to two configurations with two points of symmetry each, total of only 8 configurations that might as well be hardcoded: ⚫ _ _ ⚫ _ _ _ _ , O _ _ O _ _ _ _ , ⚫ _ _ _ _ ⚫ _ _ , O _ _ _ _ O _ _ , _ _ _ _ ⚫ _ _ ⚫ , _ _ _ _ O _ _ O , _ _ ⚫ _ _ _ _ ⚫ , _ _ O _ _ _ _ O .
+5. *Adjacency inference, two on one, no edge:* When a line contains three circles of the same type in non-edge positions, with a couple together, and the third one some distance apart, only the cells adjacent to the single cell can be of the same type, while all other cells can be solved as being of the other circle type.
 
 
+## Hint provider
 
-### <do not implement for now>
+A further component to help players who want to improve at the game is to add a Hint feature. Hints should be ones that follow know solving patterns. To ensure that the player learns the game with solid foundations, the offering of hints should follow a hierarchy of solving patterns, starting from the simplest and offering more advanced ones only when simpler ones are exhausted. There could be an option that is enabled by default but can be disabled for a “learning mode” to make it easier. When it is enabled by default, a hint only becomes available after every n (say 3) correctly filled cells. As hints become available, they are added to a Hint stack, which the player can cycle through to view all currently available hints. Hints are removed from the Hint stack once the are “consumed”, i.e. when the pattern that the hint points at is completed. This seems like a more challenging implementation in comparison to just showing hints. However, hints are identified based on configurations for which a solving pattern is known, such that the corresponding solution can be identified at low cost for each hint configuration found.
 
-#### Future alternative algorithms
+**Hint hierarchy (sorted shown first to show last)**
 
-A different *kind* of sophistication would be to let the Solver apply randomly, but include learning, such as reinforcement learning.
+1. R2 solvable rows
+    1. Identifier: line with 4 of a kind.
+    2. Hint highlights: the four cells in the line that have the same circle type.
+    3. Solution to track for ‘hint consumption’: the remaining cells of the line are filled out with circles of the opposite type.
+2. R3 solvable triplet
+    1. Identifier: triplet with edges filled with the same circle type and blank in the middle (⚫ _ ⚫ , or O _ O).
+    2. Hint highlights: the two triplet-edge cells that have the same circle type.
+    3. Solution to track for ‘hint consumption’: the blank cell in the middle of the triplet is filled out with a circle of the same type.
+3. Group-of-three configuration
+    1. Identifier: line contains a group of three adjacent circles of one type, and fewer than three circles of the other type.
+    2. Hint highlights: the group of three adjacent circles of the same type.
+    3. Solution to track for ‘hint consumption’: the cells that are not adjacent to the group and not a line edge are filled with circles of the other type.
+4. Quintuplet configuration
+    1. Identifier: sequence of five cells with edges filled with the same circle type and blank in the middle (⚫ _ ⚫ , or O _ O).
+    2. Hint highlights: the two triplet-edge cells that have the same circle type.
+    3. Solution to track for ‘hint consumption’: the blank cell in the middle of the triplet is filled out with a circle of the same type.
+5. Adjacency inference, no edge
+    1. Identifier: line contains exactly two circles of one type, with two or more cells between them, and neither in an edge position.
+    2. [TO BE COMPLETED]
+6. [TO BE COMPLETED]
 
-Considering that the Solver should be of reasonable computational efficiency 
+## UI features
 
-### </do not implement for now>
+### Hints
+
+The game features a Hint button which allows the player to get a rule-based hint to make progress and improve their understanding of the game. By default, the player must earn the ability to use a hint by making a certain number of valid moves. However, there is a high-level option to play the game in a “Free hints mode” in which hints are freely available.
+
+### Solve time tracking
+
+The timer, placed between the grid and the first row of buttons, keeps track of the solve time. The timer starts when a new puzzle is started with a difficulty level button. When the puzzle is refreshed with the Restart button, the timer keeps running. If the Show Solution button is hit during the puzzle, the timer is Null and visually becomes a “n/a”.
+
+### Solve stats
+
+The statistics tracked are:
+
+* Number of games solved.
+* Best (min) solve time.
+* Average (mean) solve time.
+* Best average (inter-quartile mean) solve time.
+
+Solve stats are disaggregated by difficulty level and by whether hints were used.
+
+**Exclusions:**
+
+* Puzzles where the Show Solution button was pressed at any point do not count toward solve stats.
+* Puzzles where the free hints mode was selected at any point do not count toward solve stats.
 

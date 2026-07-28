@@ -46,6 +46,8 @@ describe("initGameState", () => {
     expect(state.currentMoveIndex).toBe(-1);
     expect(state.solutionRevealed).toBe(false);
     expect(state.liveValidation).toBe(true);
+    expect(state.solutionEverRevealed).toBe(false);
+    expect(typeof state.startedAt).toBe("number");
   });
 });
 
@@ -149,8 +151,9 @@ describe("GO_TO_MOVE", () => {
 });
 
 describe("RESTART", () => {
-  it("clears history and hides the solution", () => {
+  it("clears history and hides the solution, but keeps the timer running and the solution-revealed taint", () => {
     let state = initGameState(PUZZLE);
+    const startedAt = state.startedAt;
     state = gameReducer(state, { type: "MOVE", row: 1, col: 0 });
     state = gameReducer(state, { type: "TOGGLE_SOLUTION" });
     state = gameReducer(state, { type: "RESTART" });
@@ -158,6 +161,8 @@ describe("RESTART", () => {
     expect(state.moveHistory).toEqual([]);
     expect(state.currentMoveIndex).toBe(-1);
     expect(state.solutionRevealed).toBe(false);
+    expect(state.solutionEverRevealed).toBe(true);
+    expect(state.startedAt).toBe(startedAt);
     expect(state.playingGrid).toBe(PUZZLE.startingGrid);
   });
 });
@@ -174,6 +179,19 @@ describe("NEW_GAME", () => {
     expect(state.moveHistory).toEqual([]);
     expect(state.liveValidation).toBe(false);
   });
+
+  it("starts a fresh timer and clears the solution-revealed taint", () => {
+    let state = initGameState(PUZZLE);
+    state = gameReducer(state, { type: "TOGGLE_SOLUTION" });
+    const oldStartedAt = state.startedAt;
+
+    const otherPuzzle: ArchivedPuzzle = { ...PUZZLE, id: "other" };
+    state = gameReducer(state, { type: "NEW_GAME", puzzle: otherPuzzle });
+
+    expect(state.solutionEverRevealed).toBe(false);
+    expect(state.solutionRevealed).toBe(false);
+    expect(state.startedAt).toBeGreaterThanOrEqual(oldStartedAt);
+  });
 });
 
 describe("TOGGLE_LIVE_VALIDATION / TOGGLE_SOLUTION", () => {
@@ -186,6 +204,15 @@ describe("TOGGLE_LIVE_VALIDATION / TOGGLE_SOLUTION", () => {
     expect(state.solutionRevealed).toBe(true);
     state = gameReducer(state, { type: "TOGGLE_SOLUTION" });
     expect(state.solutionRevealed).toBe(false);
+  });
+
+  it("keeps solutionEverRevealed sticky even after hiding the solution again", () => {
+    let state = initGameState(PUZZLE);
+    state = gameReducer(state, { type: "TOGGLE_SOLUTION" });
+    expect(state.solutionEverRevealed).toBe(true);
+    state = gameReducer(state, { type: "TOGGLE_SOLUTION" });
+    expect(state.solutionRevealed).toBe(false);
+    expect(state.solutionEverRevealed).toBe(true);
   });
 });
 

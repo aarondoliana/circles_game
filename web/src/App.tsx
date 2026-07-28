@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
 import { Controls } from "./components/Controls";
 import { GridView } from "./components/GridView";
 import { PlayerStats } from "./components/PlayerStats";
+import { Timer } from "./components/Timer";
 import { gameReducer, initGameState, isGridComplete, type GameAction, type GameState } from "./game/gameSession";
 import type { ArchivedPuzzle, Difficulty } from "./game/types";
 import { validate } from "./game/validator";
@@ -10,8 +11,10 @@ import {
   createPlayerArchive,
   loadPlayerArchive,
   recordSolved,
+  recordSolveTime,
   savePlayerArchive,
   statsFor,
+  timeStatsFor,
   unsolvedPuzzles,
   type PlayerArchiveState,
 } from "./player/playerArchive";
@@ -39,6 +42,9 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [state, dispatch] = useReducer(appReducer, null);
   const [playerArchive, setPlayerArchive] = useState<PlayerArchiveState>(() => loadPlayerArchive());
+  // Guards against re-recording the same solve on subsequent re-renders while
+  // the grid stays complete (e.g. after toggling live validation).
+  const recordedSolveKey = useRef<string | null>(null);
 
   useEffect(() => {
     fetch("/archive.json")
@@ -66,9 +72,18 @@ function App() {
   }, [state]);
 
   useEffect(() => {
-    if (state && isSolved) {
-      setPlayerArchive((prev) => recordSolved(prev, state.puzzle.id, state.puzzle.difficulty));
-    }
+    if (!state || !isSolved) return;
+    const key = `${state.puzzle.id}:${state.startedAt}`;
+    if (recordedSolveKey.current === key) return;
+    recordedSolveKey.current = key;
+
+    const solutionEverRevealed = state.solutionEverRevealed;
+    const durationMs = Date.now() - state.startedAt;
+    setPlayerArchive((prev) => {
+      let next = recordSolved(prev, state.puzzle.id, state.puzzle.difficulty);
+      if (!solutionEverRevealed) next = recordSolveTime(next, state.puzzle.difficulty, durationMs);
+      return next;
+    });
   }, [isSolved, state]);
 
   if (loadError) return <p className="status status--error">Couldn't load the puzzle archive: {loadError}</p>;
@@ -87,6 +102,7 @@ function App() {
         {isSolved && <span className="status--solved"> &middot; Solved!</span>}
       </p>
       <GridView state={state} onMove={(row, col) => dispatch({ type: "MOVE", row, col })} />
+      <Timer startedAt={state.startedAt} isNA={state.solutionEverRevealed} isSolved={isSolved} />
       <Controls
         state={state}
         onUndo={() => dispatch({ type: "UNDO" })}
@@ -96,7 +112,11 @@ function App() {
         onToggleSolution={() => dispatch({ type: "TOGGLE_SOLUTION" })}
         onNewGame={handleNewGame}
       />
-      <PlayerStats stats={statsFor(playerArchive)} onReset={() => setPlayerArchive(createPlayerArchive())} />
+      <PlayerStats
+        stats={statsFor(playerArchive)}
+        timeStats={timeStatsFor(playerArchive)}
+        onReset={() => setPlayerArchive(createPlayerArchive())}
+      />
     </div>
   );
 }

@@ -21,6 +21,8 @@ export interface GameState {
   currentMoveIndex: number; // -1 means "at the starting grid, no moves applied"
   liveValidation: boolean;
   solutionRevealed: boolean;
+  startedAt: number; // epoch ms this puzzle attempt began; unaffected by RESTART
+  solutionEverRevealed: boolean; // sticky once Show Solution is used, even after RESTART or hiding it again -- taints this attempt for solve-time stats
 }
 
 export type GameAction =
@@ -65,6 +67,8 @@ export function initGameState(puzzle: ArchivedPuzzle, liveValidation = true): Ga
     currentMoveIndex: -1,
     liveValidation,
     solutionRevealed: false,
+    startedAt: Date.now(),
+    solutionEverRevealed: false,
   };
 }
 
@@ -107,8 +111,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return initGameState(action.puzzle, state.liveValidation);
     case "TOGGLE_LIVE_VALIDATION":
       return { ...state, liveValidation: !state.liveValidation };
-    case "TOGGLE_SOLUTION":
-      return { ...state, solutionRevealed: !state.solutionRevealed };
+    case "TOGGLE_SOLUTION": {
+      const solutionRevealed = !state.solutionRevealed;
+      return { ...state, solutionRevealed, solutionEverRevealed: state.solutionEverRevealed || solutionRevealed };
+    }
     default:
       return state;
   }

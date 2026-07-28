@@ -66,6 +66,14 @@
   box-shadow: inset 0 0 0 3px #d0342c;
 }
 
+.timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 16px;
+}
+
 .controls {
   display: flex;
   flex-direction: column;
@@ -123,4 +131,21 @@
 
 .player-stats__reset:hover {
   color: #444;
+}
+
+.player-stats__times {
+  margin: 8px auto 0;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.player-stats__times th,
+.player-stats__times td {
+  padding: 2px 8px;
+  text-align: center;
+}
+
+.player-stats__times th {
+  font-weight: 600;
+  color: #666;
 }
