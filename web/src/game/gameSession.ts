@@ -59,7 +59,7 @@ export function isGridComplete(grid: GridValues): boolean {
   return grid.every((row) => row.every((v) => v !== Value.Blank));
 }
 
-export function initGameState(puzzle: ArchivedPuzzle, liveValidation = true): GameState {
+export function initGameState(puzzle: ArchivedPuzzle, liveValidation = false): GameState {
   return {
     puzzle,
     playingGrid: puzzle.startingGrid,

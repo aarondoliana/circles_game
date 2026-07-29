@@ -45,7 +45,7 @@ describe("initGameState", () => {
     expect(state.moveHistory).toEqual([]);
     expect(state.currentMoveIndex).toBe(-1);
     expect(state.solutionRevealed).toBe(false);
-    expect(state.liveValidation).toBe(true);
+    expect(state.liveValidation).toBe(false);
     expect(state.solutionEverRevealed).toBe(false);
     expect(typeof state.startedAt).toBe("number");
   });
@@ -198,7 +198,7 @@ describe("TOGGLE_LIVE_VALIDATION / TOGGLE_SOLUTION", () => {
   it("flip their respective booleans", () => {
     let state = initGameState(PUZZLE);
     state = gameReducer(state, { type: "TOGGLE_LIVE_VALIDATION" });
-    expect(state.liveValidation).toBe(false);
+    expect(state.liveValidation).toBe(true);
 
     state = gameReducer(state, { type: "TOGGLE_SOLUTION" });
     expect(state.solutionRevealed).toBe(true);
