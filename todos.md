@@ -20,6 +20,12 @@ Not yet designed or implemented. Deferred until after the solver deduction patte
 
 `specs/design_doc.md`'s "Solve stats" section calls for stats disaggregated by whether hints were used, and for "free hints mode" puzzles to be excluded from stats -- neither is implemented (`web/src/player/playerArchive.ts`'s `recordSolveTime`/`timeStatsFor`), since the Hint provider above doesn't exist yet. The Show Solution exclusion is already in place (`solutionEverRevealed` in `web/src/game/gameSession.ts`). Revisit once hints ship.
 
+## Split "reveal errors on a completed grid" into its own opt-in, tracked like hints
+
+Today, live validation (`GridView.tsx`'s `cell--incorrect`/`cell--rule-violation` highlighting, gated by `state.liveValidation` in `gameSession.ts`) also fires once the grid is fully filled in (`showValidation = !solutionRevealed && (state.liveValidation || isComplete)`). On a complete-but-wrong grid, this highlights exactly the cells that are wrong -- which for an 8x8 grid with few wrong cells is close to just handing over the solution.
+
+This should become a separate toggle from live-validation-during-play (e.g. "highlight errors on a completed grid"), off by default. When it's on, treat that puzzle attempt like the "learning mode" / hints-used case for stats purposes: exclude it from clean solve-time stats, the same way `solutionEverRevealed` already excludes Show-Solution attempts (see the "Solve stats: hint disaggregation/exclusion" todo above -- this option should plug into the same mechanism once it exists).
+
 ## Interaction polish
 
 Keyboard and right-click controls for the web client, kept separate from the Player/Archive layer work by agreement. Not yet started.
