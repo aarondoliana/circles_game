@@ -3,7 +3,7 @@ import random
 from constants import SIZE, Value
 from generator import LocalExpansionGenerator
 from grid import Grid
-from solver import find_gap_forced_moves, find_r2_forced_moves, find_r3_forced_moves, has_unique_solution, propagate, solve
+from solver import find_line_forced_moves, find_r2_forced_moves, find_r3_forced_moves, has_unique_solution, propagate, solve
 from validator import validate
 
 FULL, EMPTY, BLANK = Value.FULL, Value.EMPTY, Value.BLANK
@@ -49,37 +49,53 @@ def test_r3_forces_blank_between_two_same_known_neighbors():
     assert moves.get((0, 1)) == FULL
 
 
-def test_gap_pattern_forces_middle_cell_between_matching_full_circles():
+def test_line_forced_moves_solves_the_gap_configuration_between_matching_full_circles():
     # F _ _ _ F: the middle blank must be EMPTY, else the flanking R3
     # triplets would force both inner blanks to FULL too, five-in-a-row.
+    # R2/R3 alone can't force this (no triplet here has exactly one blank),
+    # so only brute-force-line-solving catches it.
     values = [[BLANK] * SIZE for _ in range(SIZE)]
     values[0][0] = FULL
     values[0][4] = FULL
     grid = Grid.from_values(values)
-    moves = {(r, c): v for r, c, v in find_gap_forced_moves(grid)}
+    moves = {(r, c): v for r, c, v in find_line_forced_moves(grid)}
     assert moves.get((0, 2)) == EMPTY
 
 
-def test_gap_pattern_forces_middle_cell_between_matching_empty_circles():
+def test_line_forced_moves_solves_the_gap_configuration_between_matching_empty_circles():
     # Same pattern, along a column, with EMPTY flanks -> middle forced FULL.
     values = [[BLANK] * SIZE for _ in range(SIZE)]
     values[3][3] = EMPTY
     values[7][3] = EMPTY
     grid = Grid.from_values(values)
-    moves = {(r, c): v for r, c, v in find_gap_forced_moves(grid)}
+    moves = {(r, c): v for r, c, v in find_line_forced_moves(grid)}
     assert moves.get((5, 3)) == FULL
 
 
-def test_gap_pattern_does_not_fire_without_exactly_three_blanks_between():
+def test_line_forced_moves_does_not_overreach_when_nothing_is_forced():
     values = [[BLANK] * SIZE for _ in range(SIZE)]
-    values[0][0] = FULL
-    values[0][3] = FULL  # only two cells apart, not four
+    values[0][0] = FULL  # a single circle alone in an otherwise-blank line forces nothing
     grid = Grid.from_values(values)
-    moves = {(r, c): v for r, c, v in find_gap_forced_moves(grid)}
+    moves = {(r, c): v for r, c, v in find_line_forced_moves(grid)}
     assert moves == {}
 
 
-def test_propagate_applies_gap_pattern_without_guessing():
+def test_line_forced_moves_finds_forces_the_old_narrow_gap_pattern_missed():
+    # F _ _ F _ _ _ _: the old hand-coded gap pattern only checked a fixed
+    # 5-cell window (X _ _ _ X) and wouldn't fire here since these two FULLs
+    # are only 3 apart. Brute-force-line-solving is strictly more powerful:
+    # of the 3 valid R2/R3-consistent completions of this line, position 6
+    # is EMPTY in all of them, so it's genuinely forced even though no named
+    # pattern covers this exact configuration.
+    values = [[BLANK] * SIZE for _ in range(SIZE)]
+    values[0][0] = FULL
+    values[0][3] = FULL
+    grid = Grid.from_values(values)
+    moves = {(r, c): v for r, c, v in find_line_forced_moves(grid)}
+    assert moves.get((0, 6)) == EMPTY
+
+
+def test_propagate_applies_line_forced_moves_without_guessing():
     values = [[BLANK] * SIZE for _ in range(SIZE)]
     values[0][0] = FULL
     values[0][4] = FULL
@@ -108,6 +124,24 @@ def test_solve_returns_original_solution_for_a_fully_filled_grid():
     assert len(solutions) == 1
     assert (solutions[0].cells == grid.cells).all()
     assert stats.guesses == 0
+
+
+def test_solve_line_solving_uses_zero_when_r2_r3_alone_suffice():
+    values = [row[:] for row in SOLVED_EXAMPLE]
+    values[0][4] = BLANK
+    values[0][5] = BLANK
+    grid = Grid.from_values(values)
+    _, stats = solve(grid, limit=1)
+    assert stats.line_solving_uses == 0
+
+
+def test_solve_line_solving_uses_counts_when_the_gap_configuration_is_needed():
+    values = [[BLANK] * SIZE for _ in range(SIZE)]
+    values[0][0] = FULL
+    values[0][4] = FULL
+    grid = Grid.from_values(values)
+    _, stats = solve(grid, limit=1)
+    assert stats.line_solving_uses >= 1
 
 
 def test_solve_detects_contradiction_and_returns_no_solutions():

@@ -1,31 +1,54 @@
-"""Solver: R3-then-R2 constraint propagation with guess-and-backtrack, per the
-"Algorithm" section of specs/design_doc.md.
+"""Solver: R2/R3/brute-force-line-solving constraint propagation with
+guess-and-backtrack, per the "Algorithm" section of specs/design_doc.md.
 
-Propagation order follows the doc exactly: drain all R3-solvable
-configurations to a fixpoint, then drain all R2-solvable configurations to a
-fixpoint, then loop back to R3 (since an R2 fill can unlock new R3 moves).
-When a full R3-then-R2 pass fills nothing and the grid is still incomplete,
-that's the doc's "exception for qualitative review" -- a guess is required
-because the puzzle can no longer be advanced by R2/R3 reasoning alone. Each
-such point is counted in `SolveStats.guesses`, which doubles as a cheap
-signal for future puzzle-difficulty classification (0 guesses == solvable by
-pure logic).
+Propagation follows the doc's hierarchy: R2 > R3 > brute-force-line-solving >
+recursive backtracking. R2 and R3 are drained to a combined fixpoint first,
+since they're the cheapest checks (O(line length) each) and brute-force
+line-solving is a strict superset of what they can force (see below) --
+running it before R2/R3 have exhausted themselves would mean it silently
+claims cells that R2/R3 alone could have solved, which would corrupt
+`stats.line_solving_uses` as a difficulty signal (see the "Solve stats"
+section of the design doc's Hint provider notes: the point is to know
+whether a puzzle needed *more* than R2/R3 reasoning). Only once R2/R3 stall
+does brute-force-line-solving get one pass; if that makes progress, we loop
+back to R2/R3 (a line-solving fill can unlock new R2/R3 moves elsewhere),
+continuing until a full outer pass across all three makes no progress.
+Grid-wide backtracking is reserved for genuine inter-line dependencies that
+no amount of single-line reasoning (R2, R3, or brute-force-line-solving) can
+resolve. When a full pass fills nothing and the grid is still incomplete,
+that's the doc's "exception for qualitative review" -- a guess is required.
+Each such point is counted in `SolveStats.guesses`; together with
+`SolveStats.line_solving_uses`, these double as cheap signals for future
+puzzle-difficulty classification (0 of either == solvable by pure R2/R3).
+
+R2, R3, and the "is this triplet/line R2/R3-consistent" primitives they're
+built on are defined once in `validator.py` (`count_full_empty`,
+`is_alternating_triplet`, `line_violates_r2`, `line_violates_r3`) and
+imported here, rather than re-derived, so the rule definitions can't drift
+out of sync between the validator and the solver:
 
 R2: whenever a row/column already has TARGET_COUNT of one value, its
 remaining blanks are forced to the other value.
 R3: for any three consecutive cells with exactly one blank, if only one of
 the two candidate values keeps the triplet from becoming an alternating
 ⚫O⚫/O⚫O, that value is forced.
-Gap: two same-kind circles with exactly three blanks between them
-(X _ _ _ X) force the middle blank to the opposite kind -- otherwise the two
-flanking R3 triplets would each force their inner blank to match X too
-(else they'd immediately alternate), producing five-in-a-row and violating
-R2. This is the design doc's "additional solver pattern": genuinely a pure
-R2+R3 consequence, not a guess, but invisible to the per-triplet R3 check
-above since none of the three sub-triplets in this window ever has exactly
-one blank. Included specifically so SolveStats.guesses doesn't overcount
-puzzles that a human could solve by pure logic (see the difficulty-weighting
-TODO in archive.py) -- not for raw speed, since solves are already fast.
+Brute-force-line-solving: per the design doc's "Note on additional solver
+patterns", this generalizes the doc's named single-line deduction patterns
+(group-of-three, quintuplet/gap, adjacency inference, ...) into one
+mechanism instead of hand-coding each: for a given line, enumerate every way
+to assign FULL/EMPTY to its blank cells that (a) hits the line's remaining
+R2 counts and (b) keeps the whole line R3-valid, then force any blank cell
+that holds the same value across every such valid completion. This is
+strictly more powerful than the per-triplet R3 check above (which only ever
+looks at one triplet at a time) and provably subsumes every one of the named
+patterns, since any of them amounts to "some assignment would make an
+otherwise-valid full-line completion impossible." At SIZE=8 there are at
+most C(8, 4) = 70 candidate completions for the emptiest line, so this stays
+cheap. The named patterns themselves are parked (see the "Solver pattern
+naming, deferred to the Hint provider" TODO) rather than implemented
+individually -- they're for the future Hint provider, which needs them
+named and ranked by complexity, not for the solver, which just needs the
+forced cells.
 
 One deliberate deviation from the doc's backtracking description: when both
 values of a guessed cell dead-end, the doc has you try a *different* cell at
@@ -42,15 +65,17 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from itertools import combinations
 
 from constants import CIRCLE_VALUES, SIZE, TARGET_COUNT, Value
 from grid import Grid
-from validator import validate
+from validator import count_full_empty, is_alternating_triplet, line_violates_r3, validate
 
 
 @dataclass
 class SolveStats:
     guesses: int = 0
+    line_solving_uses: int = 0  # number of propagate() passes where brute-force-line-solving contributed a move
 
 
 def find_r2_forced_moves(grid: Grid) -> list:
@@ -63,8 +88,7 @@ def find_r2_forced_moves(grid: Grid) -> list:
 
 
 def _r2_line_moves(line, make_move) -> list:
-    full = int((line == Value.FULL).sum())
-    empty = int((line == Value.EMPTY).sum())
+    full, empty = count_full_empty(line)
     if full == TARGET_COUNT and empty < TARGET_COUNT:
         forced = Value.EMPTY
     elif empty == TARGET_COUNT and full < TARGET_COUNT:
@@ -96,33 +120,47 @@ def _r3_line_moves(line, make_move) -> list:
             trial = list(triplet)
             trial[pos] = candidate
             a, b, c = trial
-            if a == c and b != a:
-                continue  # would form the forbidden alternating triplet
+            if is_alternating_triplet(a, b, c):
+                continue
             legal.append(candidate)
         if len(legal) == 1:
             moves.append(make_move(i + pos, legal[0]))
     return moves
 
 
-def find_gap_forced_moves(grid: Grid) -> list:
+def find_line_forced_moves(grid: Grid) -> list:
     moves = []
     for r in range(SIZE):
-        moves.extend(_gap_line_moves(grid.row(r), lambda i, v, r=r: (r, i, v)))
+        moves.extend(_line_forced_moves(grid.row(r), lambda i, v, r=r: (r, i, v)))
     for c in range(SIZE):
-        moves.extend(_gap_line_moves(grid.col(c), lambda i, v, c=c: (i, c, v)))
+        moves.extend(_line_forced_moves(grid.col(c), lambda i, v, c=c: (i, c, v)))
     return moves
 
 
-def _gap_line_moves(line, make_move) -> list:
+def _line_forced_moves(line, make_move) -> list:
+    blanks = [i for i, v in enumerate(line) if v == Value.BLANK]
+    if not blanks:
+        return []
+
+    full, empty = count_full_empty(line)
+    remaining_full = TARGET_COUNT - full
+    remaining_empty = TARGET_COUNT - empty
+    if remaining_full < 0 or remaining_empty < 0 or remaining_full + remaining_empty != len(blanks):
+        return []  # already contradictory; propagate()'s validate() catches this
+
+    completions = []
+    for full_positions in combinations(blanks, remaining_full):
+        trial = list(line)
+        for i in blanks:
+            trial[i] = Value.FULL if i in full_positions else Value.EMPTY
+        if not line_violates_r3(trial):
+            completions.append(trial)
+
     moves = []
-    for i in range(SIZE - 4):
-        a, b1, b2, b3, e = (Value(v) for v in line[i:i + 5])
-        if a == Value.BLANK or a != e:
-            continue
-        if b1 != Value.BLANK or b2 != Value.BLANK or b3 != Value.BLANK:
-            continue
-        opposite = Value.EMPTY if a == Value.FULL else Value.FULL
-        moves.append(make_move(i + 2, opposite))
+    for i in blanks:
+        values_at_i = {completion[i] for completion in completions}
+        if len(values_at_i) == 1:
+            moves.append(make_move(i, Value(values_at_i.pop())))
     return moves
 
 
@@ -140,22 +178,36 @@ def _drain(find_moves, grid: Grid) -> bool:
         progressed = True
 
 
-def propagate(grid: Grid) -> bool:
-    """Drains R3, then the gap pattern, then R2 to a fixpoint, looping back
-    to R3 as long as any of the three made progress. Returns False if a
-    contradiction is detected (grid can no longer reach a valid solution),
-    True otherwise (grid may be incomplete)."""
+def propagate(grid: Grid, stats: SolveStats | None = None) -> bool:
+    """Drains R2 and R3 to a combined fixpoint, then runs brute-force
+    line-solving once; if that makes progress, loops back to R2/R3,
+    continuing until a full outer pass across all three makes no progress.
+    Gating line-solving behind R2/R3 exhausting themselves (rather than
+    interleaving all three every pass) is what makes `stats.line_solving_uses`
+    a trustworthy signal: it only increments when R2/R3 truly couldn't
+    proceed without it. Returns False if a contradiction is detected (grid
+    can no longer reach a valid solution), True otherwise (grid may be
+    incomplete)."""
     while True:
-        r3_progress = _drain(find_r3_forced_moves, grid)
+        core_progress = False
+        while True:
+            r2_progress = _drain(find_r2_forced_moves, grid)
+            if not validate(grid).is_valid:
+                return False
+            r3_progress = _drain(find_r3_forced_moves, grid)
+            if not validate(grid).is_valid:
+                return False
+            if not (r2_progress or r3_progress):
+                break
+            core_progress = True
+
+        line_progress = _drain(find_line_forced_moves, grid)
         if not validate(grid).is_valid:
             return False
-        gap_progress = _drain(find_gap_forced_moves, grid)
-        if not validate(grid).is_valid:
-            return False
-        r2_progress = _drain(find_r2_forced_moves, grid)
-        if not validate(grid).is_valid:
-            return False
-        if not (r3_progress or gap_progress or r2_progress):
+        if line_progress and stats is not None:
+            stats.line_solving_uses += 1
+
+        if not (core_progress or line_progress):
             return True
 
 
@@ -182,7 +234,7 @@ def solve(grid: Grid, limit: int = 1, rng: random.Random | None = None):
 def _search(grid: Grid, solutions: list, limit: int, rng: random.Random, stats: SolveStats) -> None:
     if len(solutions) >= limit:
         return
-    if not propagate(grid):
+    if not propagate(grid, stats):
         return
 
     cell = _pick_blank_cell(grid)
