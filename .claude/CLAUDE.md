@@ -31,6 +31,8 @@ One project, two halves, sharing a spec:
 - Work on feature branches, not directly on `main`. Create a branch for non-trivial changes before committing.
 - Use conventional commits for message subjects (`feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`, etc.).
 - The agent may commit at natural checkpoints (e.g. after completing a task from `implementation_plan.md`) without asking each time — this overrides the default "never commit unless asked" behavior for this repo. Still never push, force-push, or rewrite history without explicit approval.
+– Never add "Co-Authored-By" or AI attribution lines to git commits.
+– Do not include AI markers in pull request descriptions.
 
 ## Best practices
 
