@@ -11,13 +11,22 @@ import json
 import random
 from pathlib import Path
 
-from archive import generate_batch
+from archive import TIER_NAMES, generate_batch, generate_batch_to_quotas
 
 DEFAULT_OUTPUT = Path(__file__).parent / "web" / "public" / "archive.json"
 
 
-def export_archive(count: int, seed: int, output: Path) -> None:
-    archive = generate_batch(count, rng=random.Random(seed))
+def export_archive(seed: int, output: Path, count: int | None = None, quotas: dict | None = None) -> None:
+    """Generates an Archive either by fixed `count` (round-robin profiles,
+    fast but doesn't guarantee any particular tier is well-represented) or
+    by per-tier `quotas` (targeted top-up, slower but guarantees minimums --
+    see `archive.generate_batch_to_quotas`). Exactly one of the two must be
+    given."""
+    rng = random.Random(seed)
+    if quotas is not None:
+        archive = generate_batch_to_quotas(quotas, rng=rng)
+    else:
+        archive = generate_batch(count, rng=rng)
     puzzles = [
         {
             "id": puzzle.puzzle_id,
@@ -35,8 +44,16 @@ def export_archive(count: int, seed: int, output: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--count", type=int, default=16, help="number of puzzles to generate")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--count", type=int, help="number of puzzles to generate via round-robin profiles")
+    group.add_argument("--quotas", type=int, nargs=4, metavar=("EASY", "MEDIUM", "HARD", "EXTRA_HARD"),
+                        help="minimum puzzle count per tier via targeted top-up generation "
+                             "(archive.generate_batch_to_quotas); overrides --count")
     parser.add_argument("--seed", type=int, default=0, help="RNG seed, for reproducible exports")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="output JSON path")
     args = parser.parse_args()
-    export_archive(args.count, args.seed, args.output)
+
+    if args.quotas is not None:
+        export_archive(args.seed, args.output, quotas=dict(zip(TIER_NAMES, args.quotas)))
+    else:
+        export_archive(args.seed, args.output, count=args.count or 16)

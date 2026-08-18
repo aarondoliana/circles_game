@@ -29,15 +29,18 @@ class Puzzle:
     solution: Grid
     given_cells: int  # kept-cell count on the starting grid; fewer == harder
     solve_guesses: int  # Solver.SolveStats.guesses for the starting grid; more == harder
+    line_solving_uses: int  # Solver.SolveStats.line_solving_uses; more == harder
 
     @classmethod
-    def create(cls, starting: Grid, solution: Grid, given_cells: int, solve_guesses: int) -> "Puzzle":
+    def create(cls, starting: Grid, solution: Grid, given_cells: int, solve_guesses: int,
+               line_solving_uses: int) -> "Puzzle":
         return cls(
             puzzle_id=_compute_id(starting, solution),
             starting=starting,
             solution=solution,
             given_cells=given_cells,
             solve_guesses=solve_guesses,
+            line_solving_uses=line_solving_uses,
         )
 
     def to_dict(self) -> dict:
@@ -47,6 +50,7 @@ class Puzzle:
             "solution": self.solution.cells.tolist(),
             "given_cells": self.given_cells,
             "solve_guesses": self.solve_guesses,
+            "line_solving_uses": self.line_solving_uses,
         }
 
     @classmethod
@@ -57,4 +61,5 @@ class Puzzle:
             solution=Grid.from_values(data["solution"]),
             given_cells=data["given_cells"],
             solve_guesses=data["solve_guesses"],
+            line_solving_uses=data["line_solving_uses"],
         )
