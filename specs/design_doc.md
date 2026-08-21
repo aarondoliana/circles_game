@@ -182,6 +182,8 @@ Considering even just row 0, construction crash is definitely a possibility usin
 The open question is whether this one principle will be sufficient to have grid converge in general or just often enough to make the algorithm practical.
 At this stage it isn’t even clear that proceeding with adjacency from one corner should be more successful than proceeding row-column-row-column or just row by row. If the current row and column stacks are both checked anyway, it stands to reason that the derivations are equivalent.
 
+Finally, considering that puzzles have color-reversing symmetry, before committing puzzles to the archive, the puzzles should be color-reversed half of the time so as to ensure that if there is a bias toward one color being over-sampled in the starting configuration, this will even out the bias.
+
 ### <do not implement for now>
 
 ### **Forward approach**
@@ -303,6 +305,14 @@ A further component to help players who want to improve at the game is to add a 
 6. [TO BE COMPLETED]
 
 ## UI features
+
+### Daily puzzle per difficulty tier + past-puzzle navigation
+
+Puzzles are presented to the user in such a way that there is a "daily challenge" plus navigation of older puzzles. The daily challenge is a unique puzzle for each difficulty level for the given day, updated daily; all users see the same puzzle for each day so that they can compare themselves (like the Wordle model).
+
+The archive is pre-generated such that there are enough puzzles going forward for a period of time and then incremented periodically off-line. The puzzles for the given that are mapped to the date from the archive to ensure common uniqueness among users.
+
+Users have access to all historical puzzles.
 
 ### Hints
 
