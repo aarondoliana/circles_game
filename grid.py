@@ -40,6 +40,18 @@ class Grid:
     def copy(self) -> "Grid":
         return Grid(self.cells.copy())
 
+    def inverted(self) -> "Grid":
+        """Returns a new Grid with FULL/EMPTY swapped everywhere (⚫↔O) and
+        BLANK cells left as BLANK. R2 (count balance) and R3 (squeeze
+        pattern) both depend only on equality relationships between cells,
+        not on which value is which, so an inverted grid is valid and
+        uniquely solvable, at the same difficulty, iff the original is."""
+        # FULL(1)-EMPTY(0) swap via 1-v; BLANK(-1) would map to 2, so it's
+        # special-cased back to BLANK below rather than left to fall out.
+        swapped = Value.FULL + Value.EMPTY - self.cells
+        cells = np.where(self.cells == Value.BLANK, Value.BLANK, swapped).astype(np.int8)
+        return Grid(cells)
+
     def __str__(self) -> str:
         return "\n".join(
             " ".join(SYMBOLS[Value(v)] for v in self.row(r)) for r in range(SIZE)

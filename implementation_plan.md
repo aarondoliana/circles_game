@@ -4,7 +4,34 @@ Working memory between agent and user: what's next, what's been completed, and b
 
 ## Now / Next
 
-**Next session: open by interviewing the user** on MVP scope — what "done" looks like across generator/solver, the Hint provider, and web client polish — so this Now/Next section and the Backlog priority order can be set with their input rather than assumed.
+### MVP scope, finalized with user (2026-08-19)
+
+"Done" for this version means a playable link solid enough to share with friends/family — not full design-doc feature completeness (Hint provider, Player/Platform accounts, etc.). Confirmed with the user:
+
+- **Hint provider:** deferred to a later version, not MVP-blocking.
+- **Pre-existing backlog items** (archive expansion via inversion, interaction polish, solve-stats disaggregation, configurable grid size) are not MVP-blocking; they stay in the Backlog section below at their existing priority, un-elevated.
+- **New must-have, not previously in the design doc: a daily puzzle per difficulty tier, plus past-puzzle navigation, so the archive can't be "exhausted."** Confirmed with the user: the same puzzle for every player on a given day per tier (shared daily challenge, Wordle-style), the web client stays backend-free (per its current architecture) rather than introducing a server, and past puzzles stay browsable indefinitely (no rolling-window expiry).
+- No hard deadline; paced by available time.
+
+### Next up: design the daily-puzzle mechanism
+
+Not yet designed — this is new scope, not in `specs/design_doc.md` (which only describes "a random Puzzle... from the Archive" selection; the user should update the doc once this is designed, since agents can't edit `specs/`). Current puzzle selection (`web/src/App.tsx`'s `pickPuzzle`) is pure random-from-pool with an avoid-repeat fallback (`unsolvedPuzzles` in `playerArchive.ts`) — nothing date-driven exists yet. Open questions to resolve with the user before implementing:
+
+1. **Date -> puzzle mapping.** Likely a deterministic index derived from days-since-epoch (e.g. a launch date) mod the tier's archive size, so past dates are always recomputable client-side (no separate storage needed for "past" puzzles) and no backend is required. Needs an explicit epoch/launch date once decided.
+2. **Timezone.** Is "today" the player's local calendar day, or a fixed UTC cutover (matters for players near midnight, and for whether "the same puzzle for everyone" is strictly true worldwide)?
+3. **Wraparound.** A finite per-tier pool means a pure modulo mapping eventually repeats once days-since-epoch exceeds pool size. "Won't exhaust the future archive" most plausibly means "always has a puzzle ready for tomorrow," not "literally infinite, never-repeating" -- worth confirming explicitly, since it changes how urgently pool size / regeneration cadence matters. The "Archive expansion via inversion" backlog item (cheap 2x pool size per tier) and periodic `export_archive.py --quotas` regeneration (this session's mechanism) both extend runway before any wraparound is felt.
+4. **UI for past-puzzle navigation.** Not yet designed (calendar picker? prev/next day buttons? a list?).
+
+### Done (2026-08-19): color-reversal debiasing added to generation
+
+User's own addition to `specs/design_doc.md`'s generator notes (alongside the daily-puzzle doc update above): puzzles have color-reversing symmetry, so color-reversing puzzles ~half the time before archiving cancels out any FULL/EMPTY sampling bias baked into masking's `full_fraction` (several `DEFAULT_DIFFICULTY_PROFILES` entries skew toward FULL givens, e.g. 0.75) rather than letting it leak into the archive as a whole. Flagged by the user as cheap and worth folding into MVP scope.
+
+1. **`Grid.inverted()`** (`grid.py`): swaps FULL/EMPTY everywhere, leaves BLANK as BLANK. R2/R3 only depend on equality between cells, not on which value is which, so an inverted grid is valid/uniquely-solvable/same-difficulty iff the original is (same reasoning already used by the "Archive expansion via inversion" backlog item, applied here to debias rather than to grow the pool).
+2. **`archive._maybe_invert_colors(starting, solved, rng)`**: 50/50 coin flip, applied in `_draw_puzzle` right after masking succeeds (before solving/classifying, so `solve_stats` reflects the grid actually stored). Deliberately factored out as its own function rather than inlined -- a `rng.random() < 0.5` inline call turned out to be untestable in isolation (see next point), so pulling it out let the coin-flip logic be tested directly instead.
+3. **Testing pitfall worth remembering:** initially tried to test this by subclassing `random.Random` and overriding just `.random()` to force the coin flip deterministically. This silently corrupted *all* other randomness in the same draw (mask sampling, solver guess order) -- CPython's `Random.__init_subclass__` detects a subclass overriding `.random()` and re-routes `_randbelow` (and so `randint`/`shuffle`/`sample`) through it too, rather than the normal `getrandbits`-backed path. Fixed by testing `_maybe_invert_colors` directly with a plain non-`Random` duck-typed stub exposing only `.random()`, not a `Random` subclass.
+4. Regenerated `web/public/archive.json` again with the same `--quotas 30 30 30 20 --seed 0` (167 total puzzles: Easy 30 / Medium 59 / Hard 58 / Extra Hard 20). Verified the debiasing worked: given-cell FULL/EMPTY split across the archive is 48.9%/51.1%, close to even.
+
+All 56 Python tests (`pytest`) and 39 web tests (`npm test`) pass; `npm run lint` clean. Not yet committed — pending user go-ahead.
 
 ### Done (2026-08-18): difficulty tiers recalibrated post-playtest, effort-based classification
 
@@ -55,3 +82,14 @@ This should become a separate toggle from live-validation-during-play (e.g. "hig
 ### Interaction polish
 
 Keyboard and right-click controls for the web client, kept separate from the Player/Archive layer work by agreement. Not yet started.
+
+### Configurable grid size (10x10, 12x12, ...)
+
+User request (2026-08-19): let players choose a board size, e.g. 10x10 with 5 FULL/5 EMPTY per row/column, or 12x12 with 6/6, alongside the current 8x8. Not yet designed or scoped -- flagged here as a placeholder.
+
+A decent starting point: both engines already centralize the board dimension in one constant rather than hard-coding 8 everywhere (`constants.py`'s `SIZE`/`TARGET_COUNT = SIZE // 2` on the Python side, `web/src/game/types.ts`'s `SIZE` on the web side), so the core R2/R3/line-solving/backtracking logic likely generalizes with little change. Real open questions, not yet discussed with the user:
+
+- **Puzzle/Archive schema:** puzzles don't currently carry a board size -- `Puzzle`/`archive.json` would need a size field, and the difficulty-tier calibration (given_cells ranges, `DEFAULT_DIFFICULTY_PROFILES`) is tuned for 8x8 specifically and would need separate tuning per size (a 10x10's "Easy" given-cell count isn't the 8x8 one).
+- **Web selection UI:** `Controls.tsx`'s difficulty picker (and `App.tsx`'s `pickPuzzle`) would need a size dimension alongside difficulty; `GridView.tsx`'s CSS grid layout assumes a fixed cell size against an 8x8 board.
+- **Player archive/stats:** `playerArchive.ts`'s solved-tracking and time stats are keyed by difficulty only -- would need to decide whether stats are also split by board size or pooled.
+- **Solver cost at larger sizes:** brute-force line-solving enumerates up to C(SIZE, TARGET_COUNT) completions per line (70 at SIZE=8); C(12,6)=924 is still cheap, so this is likely a non-issue, but worth confirming empirically before committing.

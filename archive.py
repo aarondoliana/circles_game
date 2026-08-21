@@ -17,6 +17,7 @@ import random
 from dataclasses import dataclass, field
 
 from generator import LocalExpansionGenerator
+from grid import Grid
 from masking import generate_puzzle
 from puzzle import Puzzle
 from solver import solve
@@ -183,6 +184,20 @@ def _resolve_profile(profile: dict, rng: random.Random) -> dict:
     return profile
 
 
+def _maybe_invert_colors(starting: Grid, solved: Grid, rng: random.Random) -> tuple:
+    """50/50 color-reverses (starting, solved) -- see Grid.inverted -- to
+    cancel out any FULL/EMPTY sampling bias baked into masking's
+    `full_fraction` (several DEFAULT_DIFFICULTY_PROFILES entries skew toward
+    FULL givens) rather than letting it leak into the archive as a whole,
+    per the design doc's generator notes. Puzzles have color-reversing
+    symmetry: R2/R3 only depend on equality between cells, not on which
+    value is which, so this doesn't change validity, uniqueness, given_cells,
+    or solve effort."""
+    if rng.random() < 0.5:
+        return starting.inverted(), solved.inverted()
+    return starting, solved
+
+
 def _draw_puzzle(profile: dict, rng: random.Random, masking_max_attempts: int) -> Puzzle | None:
     """Generates one candidate Puzzle from `profile` (a masking.generate_puzzle
     kwargs dict, optionally with `target_n_range`), or None if masking
@@ -193,6 +208,9 @@ def _draw_puzzle(profile: dict, rng: random.Random, masking_max_attempts: int) -
         solved, rng=rng, max_attempts=masking_max_attempts, **resolved)
     if starting is None:
         return None
+
+    starting, solved = _maybe_invert_colors(starting, solved, rng)
+
     _, solve_stats = solve(starting, limit=1, rng=rng)
     return Puzzle.create(starting, solved, given_cells=mask_stats.final_cells,
                           solve_guesses=solve_stats.guesses,

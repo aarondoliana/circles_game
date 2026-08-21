@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from archive import Archive, generate_batch, generate_batch_to_quotas
+from archive import Archive, _maybe_invert_colors, generate_batch, generate_batch_to_quotas
 from generator import LocalExpansionGenerator
 from puzzle import Puzzle
 from solver import has_unique_solution, solve
@@ -17,6 +17,22 @@ def _dummy_puzzle(puzzle_id, given_cells, solve_guesses, grid, line_solving_uses
 def _some_grid():
     solved, _ = LocalExpansionGenerator(rng=random.Random(0)).generate()
     return solved
+
+
+class _FixedCoin:
+    """A plain (non-random.Random) stand-in exposing just .random(), for
+    deterministically forcing/blocking _maybe_invert_colors's coin flip.
+    Deliberately NOT a random.Random subclass: overriding .random() there
+    makes CPython's Random.__init_subclass__ re-route _randbelow (and so
+    randint/shuffle/sample) through .random() too, which would corrupt
+    everything else generation needs randomness for -- this helper is only
+    ever handed to the one function that calls nothing but .random()."""
+
+    def __init__(self, value):
+        self._value = value
+
+    def random(self):
+        return self._value
 
 
 def test_add_dedups_by_puzzle_id():
@@ -119,6 +135,20 @@ def test_generate_batch_produces_valid_unique_puzzles():
         assert has_unique_solution(puzzle.starting)
         solutions, _ = solve(puzzle.starting, limit=1)
         assert (solutions[0].cells == puzzle.solution.cells).all()
+
+
+def test_maybe_invert_colors_inverts_below_half():
+    grid = _some_grid()
+    starting, solved = _maybe_invert_colors(grid, grid, _FixedCoin(0.0))
+    assert (starting.cells == grid.inverted().cells).all()
+    assert (solved.cells == grid.inverted().cells).all()
+
+
+def test_maybe_invert_colors_keeps_at_or_above_half():
+    grid = _some_grid()
+    starting, solved = _maybe_invert_colors(grid, grid, _FixedCoin(0.99))
+    assert (starting.cells == grid.cells).all()
+    assert (solved.cells == grid.cells).all()
 
 
 def test_generate_batch_spans_a_real_difficulty_gradient():
