@@ -15,11 +15,6 @@ One project, two halves, sharing a spec:
   - Update it as work completes — mark tasks done, add newly-discovered follow-up tasks — without waiting to be asked.
   - This replaces the old `todos.md` (migrated and removed).
 
-## Legacy / do not rely on
-
-- `dev.ipynb` — scratch/dev notebook, not part of the maintained codebase.
-- `iterative_algorithm_fail.xlsx` — abandoned experiment, reference only.
-
 ## Testing
 
 - Always run relevant tests after making code changes, without waiting to be asked:

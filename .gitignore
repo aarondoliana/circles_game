@@ -6,3 +6,4 @@ __pycache__/
 *.jpg
 *.png
 web/node_modules/
+implementation_plan.md
